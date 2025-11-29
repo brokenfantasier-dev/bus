@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ứng Dụng Giám Sát Hành Khách</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    crossorigin="anonymous"
+  />
+
+  <style>
+  /* CẬP NHẬT: Màu sắc và Hiệu ứng Chuyên nghiệp hơn */
+  :root {
+    --bg-start: #e0f7fa; /* Light Cyan */
+    --bg-end: #cfd8dc;   /* Light Gray/Blue */
+    --nav-bg: rgba(255, 255, 255, 0.75); /* Kính trong hơn */
+    --card-bg: rgba(255, 255, 255, 0.5); /* Kính trong hơn */
+    --card-border: rgba(255, 255, 255, 0.8); /* Viền sắc nét hơn */
+    --text-main: #1f2937;
+    --text-muted: #4b5563;
+    --accent: #00bcd4; /* Xanh Cyan sáng (Mặc định/Dashboard/CHECKIN) */
+    --accent-alt: #ff9800; /* Cam (Camera/Đang Kiểm Tra) */
+    --accent-alert: #e91e63; /* Hồng Đậm (dùng cho Cảnh báo/CHECKOUT) */
+    --shadow-subtle: 0 4px 18px rgba(0, 0, 0, 0.1);
+    --shadow-pro: 0 10px 30px rgba(0, 0, 0, 0.15); /* Thêm shadow mới */
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    display: flex;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    /* CẬP NHẬT: Thêm Gradient nền */
+    background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%); 
+    color: var(--text-main);
+    transition: all 0.5s ease;
+  }
+
+  /* --- CSS CHO BỘ ĐẾM NGƯỢC GHIM (MỚI) --- */
+  #fixedCountdown {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: none; /* Mặc định ẩn */
+      
+      /* Glassmorphism nổi bật */
+      background: rgba(255, 255, 255, 0.75);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-pro);
+      border-radius: 12px;
+      padding: 10px 20px;
+      text-align: center;
+      
+      transform: scale(0.9);
+      opacity: 0;
+      transition: transform 0.4s ease-out, opacity 0.4s ease-out;
+  }
+  
+  #fixedCountdown.active {
+      display: block;
+      transform: scale(1);
+      opacity: 1;
+      /* CẬP NHẬT: Thêm hiệu ứng nhấp nháy tổng thể khi active */
+      animation: fixed-pulse 2s infinite; 
+  }
+  
+  #fixedCountdown h4 {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+      text-transform: uppercase;
+  }
+  
+  #fixedCountdownDisplay {
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--accent-alert); /* Màu đỏ cảnh báo */
+      line-height: 1;
+  }
+
+  /* Hiệu ứng pulse riêng cho Fixed Countdown */
+  @keyframes fixed-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0.4); }
+      50% { box-shadow: 0 0 0 15px rgba(233, 30, 99, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0.4); }
+  }
+  
+  /* Floating Countdown cũ (vẫn ẩn) */
+  #floating-countdown {
+    display: none !important; 
+  }
+  
+  /* Cập nhật trạng thái disabled của nút */
+  .gps-inputs button:disabled,
+  .check-io-buttons button:disabled {
+      background-color: #9e9e9e !important;
+      cursor: not-allowed;
+      box-shadow: none !important;
+      transform: none !important;
+  }
+
+
+  /* Glassmorphic NAV CẬP NHẬT MÀU VÀ HIỆU ỨNG MENU */
+  nav {
+    width: 200px;
+    background: var(--nav-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: var(--shadow-pro); /* Dùng shadow pro */
+    flex-shrink: 0;
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    /* CẬP NHẬT: Thêm Transition cho nav */
+    transition: width 0.3s ease; 
+  }
+  nav h2 {
+    padding: 1rem;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--text-main);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+  }
+  nav ul { list-style: none; }
+  
+  /* CẬP NHẬT: Thẻ a (link) */
+  nav a {
+    display: flex; /* Dùng flex để căn chỉnh icon và chữ */
+    align-items: center;
+    padding: .75rem 1rem;
+    color: var(--text-main);
+    text-decoration: none;
+    transition: all .3s ease, border-left .1s;
+    position: relative;
+    font-weight: 500;
+    margin: 8px 0; /* Khoảng cách giữa các mục */
+    border-radius: 0 8px 8px 0; /* Bo góc phải */
+    width: 95%; /* Hơi thụt vào */
+  }
+  nav a i {
+      margin-right: 10px;
+      font-size: 1.1rem;
+  }
+  
+  /* CẬP NHẬT: Hiệu ứng Hover chung */
+  nav a:hover {
+      background: rgba(0, 0, 0, 0.05); /* Nền xám nhạt khi hover */
+      color: var(--text-main);
+      transform: translateX(4px); /* Hơi trượt sang phải */
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  
+  /* CẬP NHẬT: Thanh Active (Dashboard - Màu Xanh) */
+  nav a[data-target="dashboard"].active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(0, 188, 212, 0.4);
+      border-left: 4px solid #fff;
+      transform: translateX(0);
+  }
+  nav a[data-target="dashboard"].active i {
+      color: #fff;
+  }
+
+  /* CẬP NHẬT: Thanh Active (Camera - Màu Cam) */
+  nav a[data-target="camera"].active {
+      background: var(--accent-alt);
+      color: #fff;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+      border-left: 4px solid #fff;
+      transform: translateX(0);
+  }
+  nav a[data-target="camera"].active i {
+      color: #fff;
+  }
+  
+  /* CẬP NHẬT: Màu icon mặc định */
+  nav a:not(.active) i {
+      color: var(--accent); /* Icon dashboard màu xanh */
+  }
+  nav a[data-target="camera"]:not(.active) i {
+      color: var(--accent-alt); /* Icon camera màu cam */
+  }
+
+  main {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* Gán chung cho cả input GPS và Alarm */
+  .gps-inputs {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    max-width: 600px; 
+  }
+  .gps-inputs input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    font-size: .9rem;
+    transition: border-color 0.3s;
+  }
+  .gps-inputs input:focus {
+    outline: none;
+    border-color: var(--accent); /* Viền xanh khi focus */
+    box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.2); /* Thêm bóng khi focus */
+  }
+  
+  /* --- CSS NÚT BẤM CẬP NHẬT (Thêm hiệu ứng :active) --- */
+  .gps-inputs button,
+  .check-io-buttons button {
+    padding: 8px 16px;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease; 
+    font-size: 1rem; /* Tăng nhẹ font */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    flex: 1; 
+  }
+  .gps-inputs button:hover,
+  .check-io-buttons button:hover {
+    background: #0097a7; /* Darker hover for accent */
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  /* Hiệu ứng click */
+  .gps-inputs button:active,
+  .check-io-buttons button:active {
+      transform: scale(0.98) translateY(1px); 
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Riêng cho nút CHECKOUT (Accent-alert - Hồng đậm) */
+  #checkoutButton {
+    background: var(--accent-alert) !important;
+    box-shadow: 0 2px 6px rgba(233, 30, 99, 0.4) !important;
+  }
+  #checkoutButton:hover {
+      background: #c53030 !important; /* Màu hover tối hơn */
+      box-shadow: 0 4px 10px rgba(233, 30, 99, 0.6) !important;
+  }
+  /* --- END CSS NÚT BẤM --- */
+
+  /* --- CẬP NHẬT: CSS GRID CHO HÀNH ĐỘNG VÀ TRẠNG THÁI --- */
+  #action-status-row {
+      display: grid;
+      /* Giảm cột 3 để dành chỗ cho bộ đếm ghim */
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+      gap: 24px;
+      margin-bottom: 32px;
+  }
+  /* Bố cục lại để chỉ có 2 cột (Button và Status) trên desktop, Card Duration sẽ được hiển thị như một card thông thường */
+  @media (min-width: 1000px) {
+       #action-status-row {
+           grid-template-columns: minmax(250px, 1fr) minmax(200px, 1fr); 
+       }
+       #checkinDurationCard {
+           /* Đẩy Checkin Duration Card xuống dưới hoặc về vị trí card thống kê */
+           grid-column: 1 / -1; 
+           max-width: 300px;
+       }
+  }
+
+
+  /* Container cho nút CHECKIN/CHECKOUT */
+  .check-io-buttons {
+      display: flex;
+      gap: 12px;
+  }
+  .check-io-buttons button {
+      flex: 1;
+  }
+
+  /* CẬP NHẬT: MỤC TRẠNG THÁI HOẠT ĐỘNG (Sử dụng card glassmorphic để đồng nhất) */
+  #activityStatusContainer {
+      padding: 15px 20px; /* Tăng nhẹ padding */
+      border-radius: 12px; /* Bo góc lớn hơn */
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-subtle);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* Căn giữa nội dung theo chiều dọc */
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  #activityStatusContainer:hover {
+      transform: translateY(-5px); /* Hiệu ứng nâng */
+      box-shadow: var(--shadow-pro);
+  }
+  #activityStatusContainer h4 {
+      font-size: 0.9rem; /* Nhỏ hơn */
+      color: var(--text-muted);
+      margin-bottom: 5px;
+  }
+  #activityStatus {
+      display: inline-block;
+      font-size: 1.4rem; /* Hơi nhỏ hơn so với trước */
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: #fff;
+      /* Mặc định: Sẵn sàng (Xám) */
+      background: var(--text-muted); 
+      transition: background 0.3s ease;
+  }
+
+  /* Trạng thái đã Checkin (Xanh) */
+  .status-checkin {
+      background: var(--accent); 
+  }
+  /* Trạng thái đang Kiểm Tra (Cam) */
+  .status-checking {
+      background: var(--accent-alt); 
+  }
+  /* Trạng thái CẢNH BÁO (Hồng) */
+  .status-alert {
+      background: var(--accent-alert); 
+      animation: pulse 1s infinite;
+  }
+  /* --- END MỤC TRẠNG THÁI HOẠT ĐỘNG MỚI --- */
+
+  /* --- CẬP NHẬT: Thẻ Thời Gian Hoạt Động (checkinDurationCard) (Giờ chỉ hiển thị Checkin Timer) --- */
+  #checkinDurationCard {
+      padding: 15px 20px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-subtle);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center; 
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  #checkinDurationCard:hover {
+      transform: translateY(-5px); /* Hiệu ứng nâng */
+      box-shadow: var(--shadow-pro);
+  }
+  #checkinDurationCard h4 {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+  }
+
+  /* CẬP NHẬT: Style cho Checkin Timer (Chỉ hiển thị Checkin Timer) */
+  #checkinTimerDisplay {
+      font-size: 1.5rem; 
+      font-weight: bold;
+      color: var(--accent); /* Mặc định là màu xanh */
+      display: block;
+      line-height: 1.2;
+      transition: color 0.3s ease;
+  }
+  
+  /* Ẩn hoàn toàn Countdown Display cũ (vì đã chuyển sang fixedCountdown) */
+  #checkoutCountdownDisplay {
+      display: none !important;
+  }
+  /* --- END Thẻ Thời Gian Hoạt Động --- */
+
+  /* TOP ROW - Giữ nguyên layout */
+  .top-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 1200px) {
+     .top-row { flex-wrap: wrap; }
+     .top-row > .card-gps,
+     .top-row > .stat-card {
+        flex: 1 1 calc(50% - 12px); 
+        max-width: unset;
+     }
+  }
+  @media (max-width: 600px) {
+    .top-row { flex-direction: column; }
+    .top-row > .card-gps,
+    .top-row > .stat-card { max-width: 100%; }
+    
+    /* Trên mobile, xếp các khối action/status/timer thành 1 cột */
+    #action-status-row {
+        grid-template-columns: 1fr;
+    }
+    .check-io-buttons {
+        flex-direction: column;
+    }
+    #checkinDurationCard {
+        max-width: 100%;
+    }
+  }
+  .top-row > .card-gps,
+  .top-row > .stat-card {
+    flex: 1 1 calc((100% - 72px) / 4); 
+    max-width: 250px; 
+  }
+
+  /* Glassmorphic card base CẬP NHẬT */
+  .card-gps,
+  .stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(16px); /* Tăng blur */
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow-subtle);
+    flex-shrink: 0;
+    transition: transform 0.3s ease, box-shadow 0.3s ease; /* Thêm transition */
+  }
+  /* CẬP NHẬT: Hiệu ứng nâng thẻ khi hover */
+  .stat-card:hover,
+  .card-gps:hover { /* Áp dụng cho cả card gps */
+      transform: translateY(-5px); 
+      box-shadow: var(--shadow-pro); /* Dùng shadow pro */
+  }
+
+  /* GPS Card specifics */
+  .card-gps .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .card-gps h3 {
+    display: flex;
+    align-items: center;
+    font-size: 1.2rem;
+    color: var(--text-main);
+  }
+  .card-gps h3 i { margin-right: 8px; }
+  .card-gps .status {
+    text-transform: uppercase;
+    font-size: .75rem;
+    padding: 4px 10px;
+    border-radius: 10px;
+    background: var(--accent); /* Mặc định là xanh */
+    color: #fff;
+  }
+  /* CẬP NHẬT: Trạng thái GPS không rõ/Tắt */
+  .card-gps .status:not([id*="Thủ công"]) { 
+    background: var(--text-muted); 
+  }
+  .card-gps .row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .card-gps .row:last-child { margin-bottom: 0; }
+  .card-gps .row i.dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 10px;
+    display: inline-block;
+  }
+  .card-gps .label {
+    flex: 1;
+    font-size: .95rem;
+    color: var(--text-muted);
+  }
+  .card-gps .value {
+    font-weight: bold;
+    color: var(--text-main);
+  }
+
+  /* Stat Card specifics */
+  .stat-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .stat-card h4 {
+    display: flex;
+    align-items: center;
+    font-size: 1rem;
+    color: var(--text-main);
+  }
+  .stat-card h4 i { margin-right: 8px; font-size: 1.1rem; }
+  .stat-card .badge {
+    font-size: .75rem;
+    padding: 3px 8px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: #fff;
+  }
+  .stat-card .badge.off {
+    background: var(--accent-alt);
+  }
+  /* Badge Cảnh báo */
+  .stat-card .badge.alert {
+      background: var(--accent-alert);
+      animation: pulse 1s infinite;
+  }
+  /* CẬP NHẬT: Hiệu ứng pulse rõ ràng hơn */
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(233, 30, 99, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0); }
+  }
+
+  /* CẬP NHẬT: Số liệu chính (font/size đã đồng nhất) */
+  .stat-card .stat-main {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 6px 0 10px;
+    display: inline-block;
+    border-bottom: 3px solid var(--accent);
+    color: var(--text-main); /* Màu chữ mặc định */
+    transition: color 0.3s, border-bottom-color 0.3s;
+  }
+  
+  /* CẬP NHẬT: Tô màu số liệu Người Xuống và viền */
+  #getOffCount {
+      color: var(--accent-alt);
+      border-bottom-color: var(--accent-alt);
+  }
+
+  /* CẬP NHẬT: Lượng khách trên xe (Forgotten) */
+  .stat-card .stat-main.off {
+    border-color: var(--accent-alt); 
+  }
+  .stat-card .stat-main.alert {
+    border-color: var(--accent-alert);
+    color: var(--accent-alert);
+    animation: pulse-text 1s infinite; /* Thêm hiệu ứng nhấp nháy cho text */
+  }
+
+  @keyframes pulse-text {
+      0% { opacity: 1; }
+      50% { opacity: 0.8; }
+      100% { opacity: 1; }
+  }
+
+  .stat-card .stat-footer {
+    font-size: .8rem;
+    color: var(--text-muted);
+  }
+  .stat-card .stat-footer.hidden-countdown {
+      visibility: hidden; 
+      height: 0;
+      margin: 0;
+      padding: 0;
+  }
+  .stat-card canvas {
+    width: 100% !important;
+    height: 160px !important;
+    margin-top: 8px;
+  }
+
+  /* Map */
+  #map {
+    width: 100%;
+    height: 320px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-pro); /* Dùng shadow pro */
+    margin-bottom: 32px;
+    transition: box-shadow 0.3s ease;
+  }
+
+  /* Charts Grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+    gap: 24px;
+    margin-top: 32px;
+  }
+
+/* Live Camera Card */
+.live-cam {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 12px;
+  padding: 16px;
+  max-width: 680px;        
+  margin: 0 auto 32px;     
+  box-shadow: var(--shadow-pro); /* Dùng shadow pro */
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.live-cam:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+}
+
+
+/* Card header */
+.live-cam h3 {
+  text-align: center;
+  font-size: 1.3rem;
+  color: var(--text-main);
+  margin-bottom: 16px;
+}
+
+/* Stream image */
+.live-cam img {
+  display: block;
+  width: 640px;
+  height: 640px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin: 0 auto;         
+}
+
+/* Nút Bắt đầu Live Stream CẬP NHẬT */
+#startStreamBtn {
+  display: block;
+  margin: 20px auto;
+  padding: 12px 24px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease; 
+  box-shadow: 0 4px 8px rgba(0, 188, 212, 0.4);
+}
+
+#startStreamBtn:hover {
+    background: #0097a7;
+    box-shadow: 0 6px 12px rgba(0, 188, 212, 0.6);
+}
+
+#startStreamBtn:active {
+    transform: scale(0.96) translateY(2px); /* Giảm scale sâu hơn */
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2); 
+}
+
+
+/* Ẩn scroll ngang, nếu có */
+main {
+  overflow-x: hidden;
+}
+
+/* --- CSS CHO CUSTOM ALERT MODAL CẬP NHẬT --- */
+#customAlert {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8); /* Nền tối hơn */
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s, visibility 0.4s;
+}
+
+#customAlert.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.alert-content {
+    max-width: 400px;
+    background: rgba(255, 255, 255, 0.95); /* Kính trong hơn */
+    border: 1px solid rgba(255, 255, 255, 1);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border-radius: 16px;
+    padding: 30px;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); /* Shadow mạnh hơn */
+    transform: translateY(-50px);
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Springy effect */
+}
+
+#customAlert.show .alert-content {
+    transform: translateY(0);
+}
+
+.alert-content i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.alert-content h4 {
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+#alertCloseBtn {
+    padding: 10px 20px;
+    margin-top: 20px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    color: #fff;
+    background-color: var(--accent);
+    box-shadow: 0 4px 8px rgba(0, 188, 212, 0.4);
+}
+
+#alertCloseBtn:hover {
+    background-color: #0097a7;
+    box-shadow: 0 6px 10px rgba(0, 188, 212, 0.6);
+}
+#alertCloseBtn:active {
+    transform: scale(0.95);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Styles for Alert (Error/Forgotten) */
+#customAlert.error .alert-content {
+    border-top: 5px solid var(--accent-alert);
+}
+#customAlert.error #alertIcon {
+    color: var(--accent-alert);
+    animation: shake 0.5s;
+    animation-iteration-count: infinite;
+}
+#customAlert.error #alertTitle {
+    color: var(--accent-alert);
+}
+#customAlert.error #alertCloseBtn {
+    background-color: var(--accent-alert);
+    box-shadow: 0 4px 8px rgba(233, 30, 99, 0.4);
+}
+#customAlert.error #alertCloseBtn:hover {
+    background-color: #c53030;
+    box-shadow: 0 6px 10px rgba(233, 30, 99, 0.6);
+}
+
+/* Styles for Success (Safe) */
+#customAlert.success .alert-content {
+    border-top: 5px solid var(--accent);
+}
+#customAlert.success #alertIcon {
+    color: var(--accent);
+}
+#customAlert.success #alertTitle {
+    color: var(--accent);
+}
+
+/* Animation for Error Icon (CẬP NHẬT: Shake mạnh hơn) */
+@keyframes shake {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(-2px, -2px) rotate(-1deg); }
+  20% { transform: translate(2px, 2px) rotate(1deg); }
+  30% { transform: translate(-3px, 1px) rotate(0deg); }
+  40% { transform: translate(3px, -1px) rotate(1deg); }
+  50% { transform: translate(-2px, 2px) rotate(-1deg); }
+  60% { transform: translate(2px, -2px) rotate(0deg); }
+  70% { transform: translate(-3px, -1px) rotate(-1deg); }
+  80% { transform: translate(3px, 1px) rotate(1deg); }
+  90% { transform: translate(-1px, 2px) rotate(0deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+  </style>
+</head>
+<body>
+
+  <div id="fixedCountdown">
+      <h4>ĐANG KIỂM TRA KHÁCH</h4>
+      <span id="fixedCountdownDisplay">00:00</span>
+  </div>
+  
+  <div id="floating-countdown" style="display: none;">
+      <span id="countdownDisplay">00:00</span>
+      <div class="countdown-label" id="floatingLabel">Đã dừng</div>
+  </div>
+  <nav>
+    <h2>Menu</h2>
+    <ul>
+      <li><a href="#" data-target="dashboard" class="active"><i class="fas fa-chart-area"></i> Bảng Điều Khiển</a></li>
+      <li><a href="#" data-target="camera"><i class="fas fa-video"></i> Camera</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <section id="dashboard" class="section active">
+
+      <div class="gps-inputs">
+        <input id="latInput" placeholder="Vĩ độ" value="11.9405">
+        <input id="lngInput" placeholder="Kinh độ" value="108.4357">
+        <button onclick="manualUpdate()">Cập nhật GPS</button>
+      </div>
+
+      <div id="action-status-row">
+          
+          <div class="check-io-buttons">
+              <button id="checkinButton" onclick="startCheckin()" style="background-color: var(--accent);">
+                  <i class="fas fa-clock"></i> CHECKIN
+              </button>
+              <button id="checkoutButton" onclick="endCheckout()" disabled style="background-color: var(--accent-alert);">
+                  <i class="fas fa-bus"></i> CHECKOUT
+              </button>
+          </div>
+          
+          <div id="activityStatusContainer">
+              <h4>Trạng Thái Hoạt Động</h4>
+              <span id="activityStatus" class="status-ready">Sẵn Sàng</span>
+          </div>
+
+          <div id="checkinDurationCard">
+              <h4>Thời Gian Hoạt Động</h4>
+              <span id="checkinTimerDisplay">00:00:00</span>
+              <span id="checkoutCountdownDisplay" style="display: none;"></span> 
+          </div>
+          
+      </div>
+
+      <div class="top-row">
+        <div class="card-gps">
+          <div class="card-header">
+            <h3><i class="fas fa-map-marker-alt"></i> Vị Trí GPS</h3>
+            <span id="gpsStatus" class="status">Không rõ</span>
+          </div>
+          <div class="row">
+            <i class="fas fa-circle dot" style="background:#a78bfa"></i>
+            <span class="label">Vĩ độ</span>
+            <span id="latValue" class="value">11.9405</span>
+          </div>
+          <div class="row">
+            <i class="fas fa-globe dot" style="background:#4fd1c5"></i>
+            <span class="label">Kinh độ</span>
+            <span id="lngValue" class="value">108.4357</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="card-header">
+            <h4><i class="fas fa-sign-in-alt"></i> Người Lên</h4>
+            <span class="badge">Trực tiếp</span> 
+          </div>
+          <div id="getOnCount" class="stat-main">0</div>
+          <div class="stat-footer">Cập nhật lúc này</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="card-header">
+            <h4><i class="fas fa-sign-out-alt"></i> Người Xuống</h4>
+            <span class="badge off">Trực tiếp</span>
+          </div>
+          <div id="getOffCount" class="stat-main">0</div> 
+          <div class="stat-footer">Cập nhật lúc này</div>
+        </div>
+        
+        <div id="forgottenPeopleCard" class="stat-card">
+          <div class="card-header">
+            <h4><i class="fas fa-users"></i> Lượng khách trên xe</h4>
+            <span id="alarmStatusBadge" class="badge off">Sẵn sàng</span>
+          </div>
+          <div id="forgottenCount" class="stat-main off">0</div>
+          <div class="stat-footer hidden-countdown">
+            </div>
+        </div>
+        </div>
+
+      <div id="map"></div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="card-header">
+            <h4><i class="fas fa-tachometer-alt"></i> Lên/Xuống Tức Thời</h4>
+            <span class="badge total">Đỉnh Lên tại: <span id="peakTime">--:--:--</span></span>
+          </div>
+          <canvas id="movementChart"></canvas>
+        </div>
+        <div class="stat-card">
+          <div class="card-header">
+            <h4><i class="fas fa-chart-line"></i> So Sánh Tích Lũy</h4>
+            <span class="badge">Trực tiếp</span>
+          </div>
+          <canvas id="flowChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section id="camera" class="section">
+    <div class="live-cam">
+        <h3>Camera Trực Tiếp</h3>
+        <img id="streamImg" src="" alt="Live Stream" style="display:none;">
+        <button id="startStreamBtn" onclick="startStream()">Bắt Đầu Live Stream</button>
+    </div>
+    </section>
+  </main>
+  
+  <div id="customAlert" style="display: none;">
+      <div class="alert-content">
+          <i id="alertIcon" class="fas"></i>
+          <h4 id="alertTitle"></h4>
+          <p id="alertMessage"></p>
+          <button id="alertCloseBtn">Đã kiểm tra</button>
+      </div>
+  </div>
+  <script>
+
+    // Google Maps init callback
+    function initMap(){
+      // Lấy giá trị khởi tạo từ thẻ span.value
+      const lat = parseFloat(document.getElementById('latValue').textContent);
+      const lng = parseFloat(document.getElementById('lngValue').textContent);
+      window.map = new google.maps.Map(document.getElementById('map'), {
+        center: {lat, lng}, zoom: 15
+      });
+      window.marker = new google.maps.Marker({
+        position:{lat, lng}, map: window.map
+      });
+    }
+
+    // Hàm cập nhật GPS thủ công
+    function manualUpdate() {
+        const latInput = document.getElementById('latInput').value;
+        const lngInput = document.getElementById('lngInput').value;
+
+        const lat = parseFloat(latInput);
+        const lng = parseFloat(lngInput);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert("Tọa độ không hợp lệ!");
+            return;
+        }
+
+        // 1. Cập nhật thẻ GPS
+        document.getElementById('latValue').textContent = latInput;
+        document.getElementById('lngValue').textContent = lngInput;
+        document.getElementById('gpsStatus').textContent = 'Thủ công';
+
+        // 2. Cập nhật Google Map
+        const newLatLng = new google.maps.LatLng(lat, lng);
+        window.marker.setPosition(newLatLng);
+        window.map.setCenter(newLatLng);
+        window.map.setZoom(15); 
+    }
+  </script>
+  <script async defer
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao&libraries=places&callback=initMap">
+</script>
+<script>
+// --- Chart Setup (Giữ nguyên) ---
+
+// Biểu đồ 1: Lên/Xuống Tức Thời (Movement Flow)
+const flowData = {
+  labels: [],
+  datasets: [
+    {
+        label: 'Người Lên Tức Thời',
+        data: [],
+        borderColor: 'rgb(75, 192, 192)', // Xanh (Lên)
+        tension: 0.3,
+        fill: false,
+    },
+    {
+        label: 'Người Xuống Tức Thời',
+        data: [],
+        borderColor: 'rgb(255, 152, 0)', // Cam (Xuống - dùng màu accent-alt)
+        tension: 0.3,
+        fill: false,
+    }
+  ]
+};
+
+// Biểu đồ 2: So Sánh Tích Lũy (Cumulative Comparison)
+const cumulativeData = {
+  labels: [],
+  datasets: [
+    {
+        label: 'Tổng Người Lên',
+        data: [],
+        borderColor: 'rgb(0, 188, 212)', // Xanh Cyan (Accent)
+        tension: 0.3,
+        fill: true,
+        backgroundColor: 'rgba(0, 188, 212, 0.2)',
+    },
+    {
+        label: 'Tổng Người Xuống',
+        data: [],
+        borderColor: 'rgb(255, 99, 132)', // Hồng (GetOff/Alert)
+        tension: 0.3,
+        fill: true,
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+    }
+  ]
+};
+
+const movementChart = new Chart(document.getElementById("movementChart"), {
+  type: 'line',
+  data: flowData, // Biểu đồ Lên/Xuống Tức Thời
+  options: { responsive: true, scales: { y: { beginAtZero: true } } }
+});
+
+const flowChart = new Chart(document.getElementById("flowChart"), {
+  type: 'line',
+  data: cumulativeData, // Biểu đồ Tích Lũy
+  options: { responsive: true, scales: { y: { beginAtZero: true } } }
+});
+
+let lastGetOn = 0;
+let lastGetOff = 0;
+let peakTime = '--:--:--';
+let peakValue = 0;
+// --- END Chart Setup ---
+
+
+// === Logic CẢNH BÁO BỎ SÓT (CẬP NHẬT) ===
+let alarmInterval;
+let alarmTimeSeconds = 60; // 1 phút đếm ngược
+let countdownSeconds = alarmTimeSeconds;
+let isCountingDown = false; 
+
+let checkinDurationInterval;
+let checkinSeconds = 0;
+let isCheckinActive = false; 
+
+const forgottenCountElement = document.getElementById("forgottenCount");
+const alarmStatusBadge = document.getElementById("alarmStatusBadge");
+const checkinButton = document.getElementById("checkinButton");
+const checkoutButton = document.getElementById("checkoutButton");
+const activityStatus = document.getElementById("activityStatus"); // Thẻ trạng thái mới
+
+// CẬP NHẬT: Lấy 2 thẻ hiển thị bộ đếm riêng biệt
+const checkinTimerDisplay = document.getElementById("checkinTimerDisplay"); 
+const fixedCountdown = document.getElementById("fixedCountdown");
+const fixedCountdownDisplay = document.getElementById("fixedCountdownDisplay");
+
+
+// === Custom Alert Modal Logic (Giữ nguyên) ===
+const customAlert = document.getElementById('customAlert');
+const alertTitle = document.getElementById('alertTitle');
+const alertMessage = document.getElementById('alertMessage');
+const alertIcon = document.getElementById('alertIcon');
+const alertCloseBtn = document.getElementById('alertCloseBtn');
+customAlert.style.display = 'flex'; 
+
+alertCloseBtn.addEventListener('click', () => {
+    // Nếu là alert thành công (dù là kiểm tra hoàn tất hay kiểm tra thành công sớm), reset về trạng thái ban đầu.
+    if (customAlert.classList.contains('success')) {
+        resetTimers(); // Reset về trạng thái Sẵn sàng
+    }
+    customAlert.classList.remove('show', 'error', 'success');
+});
+
+customAlert.addEventListener('click', (e) => {
+    if (e.target.id === 'customAlert') {
+        if (customAlert.classList.contains('success')) {
+            resetTimers();
+        }
+        customAlert.classList.remove('show', 'error', 'success');
+    }
+});
+
+function showCustomAlert(title, message, isError) {
+    alertTitle.textContent = title;
+    alertMessage.textContent = message;
+
+    customAlert.classList.remove('error', 'success');
+
+    if (isError) {
+        customAlert.classList.add('error', 'show');
+        alertIcon.className = 'fas fa-exclamation-triangle'; 
+        alertCloseBtn.textContent = 'Đã kiểm tra và xử lý';
+    } else {
+        customAlert.classList.add('success', 'show');
+        alertIcon.className = 'fas fa-check-circle';
+        alertCloseBtn.textContent = 'Tiếp tục hành trình';
+    }
+}
+// === END Custom Alert Modal Logic ===
+
+
+// CẬP NHẬT: Hàm cập nhật hiển thị đồng hồ Checkin (Đếm lên HH:MM:SS)
+function updateCheckinTimer(seconds) {
+    // Đếm lên: HH:MM:SS (Thời gian Checkin)
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const formatted = [hours, mins, secs]
+        .map(v => v < 10 ? "0" + v : v)
+        .join(":");
+    
+    checkinTimerDisplay.innerText = formatted;
+}
+
+// CẬP NHẬT: Hàm cập nhật hiển thị đồng hồ Countdown (Đếm ngược MM:SS)
+function updateCountdownTimer(seconds) {
+    // Đếm ngược: MM:SS (Thời gian Kiểm tra khách)
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    const formatted = [mins, secs]
+        .map(v => v < 10 ? "0" + v : v)
+        .join(":");
+    
+    // Cập nhật thẻ ghim
+    fixedCountdownDisplay.innerText = formatted;
+}
+
+
+// Hàm khởi tạo/reset tất cả các bộ đếm
+function resetTimers() {
+    // Dừng tất cả interval
+    clearInterval(alarmInterval);
+    clearInterval(checkinDurationInterval);
+
+    // Reset cờ
+    isCountingDown = false;
+    isCheckinActive = false;
+
+    // Reset giá trị
+    countdownSeconds = alarmTimeSeconds;
+    checkinSeconds = 0;
+    
+    // CẬP NHẬT: Cập nhật UI về trạng thái ban đầu
+    checkinTimerDisplay.innerText = "00:00:00"; 
+    
+    // CẬP NHẬT: Ẩn bộ đếm ghim
+    fixedCountdown.classList.remove('active');
+    
+    alarmStatusBadge.textContent = "Sẵn sàng";
+    alarmStatusBadge.className = "badge off";
+    forgottenCountElement.classList.remove('alert');
+    forgottenCountElement.classList.add('off');
+    
+    checkinButton.disabled = false; 
+    checkoutButton.disabled = true; 
+    
+    // Cập nhật Trạng thái Hoạt Động (MỚI)
+    activityStatus.textContent = "Sẵn Sàng";
+    activityStatus.className = ""; // Xóa class để về mặc định (Xám)
+}
+
+
+// === LOGIC CHECKIN ===
+function startCheckin() {
+    if (isCheckinActive) return; 
+
+    // 1. Dừng mọi bộ đếm và reset trạng thái
+    resetTimers();
+
+    isCheckinActive = true;
+    checkinSeconds = 0;
+    
+    // 2. Bắt đầu đếm lên (Checkin Duration)
+    checkinDurationInterval = setInterval(() => {
+        checkinSeconds++;
+        updateCheckinTimer(checkinSeconds); 
+    }, 1000);
+    
+    // 3. Cập nhật trạng thái UI
+    checkinButton.disabled = true;
+    checkoutButton.disabled = false;
+    alarmStatusBadge.textContent = "Đã Checkin";
+    alarmStatusBadge.className = "badge"; // Màu xanh (Accent)
+
+    // Cập nhật Trạng thái Hoạt Động (MỚI)
+    activityStatus.textContent = "Đã Checkin";
+    activityStatus.className = "status-checkin";
+}
+
+
+// === LOGIC CHECKOUT ===
+function endCheckout() {
+    if (!isCheckinActive) return; 
+
+    // 1. Dừng đếm lên
+    clearInterval(checkinDurationInterval);
+    isCheckinActive = false;
+    
+    console.log(`Thời gian Checkin: ${checkinSeconds} giây.`);
+
+    // 2. Bắt đầu quy trình kiểm tra hành khách (Đếm ngược 60s)
+    startCountdown(); 
+
+    // CẬP NHẬT: Bật hiển thị bộ đếm ngược ghim
+    fixedCountdown.classList.add('active'); 
+
+    // 3. Cập nhật trạng thái UI
+    checkinButton.disabled = true;
+    checkoutButton.disabled = true;
+    alarmStatusBadge.textContent = "Đang Kiểm Tra";
+    alarmStatusBadge.className = "badge off"; // Màu cam (Accent-alt)
+
+    // Cập nhật Trạng thái Hoạt Động (MỚI)
+    activityStatus.textContent = "Đang Kiểm Tra";
+    activityStatus.className = "status-checking";
+}
+
+
+// === LOGIC ĐẾM NGƯỢC (KIỂM TRA HÀNH KHÁCH) ===
+function startCountdown() {
+    isCountingDown = true;
+    countdownSeconds = alarmTimeSeconds; // Reset về 60s
+    updateCountdownTimer(countdownSeconds); // Cập nhật hiển thị ngay lập tức
+    
+    // Cập nhật số người bị bỏ sót hiện tại
+    forgottenCountElement.innerText = document.getElementById("getOnCount").innerText - document.getElementById("getOffCount").innerText;
+    forgottenCountElement.classList.remove('alert');
+    forgottenCountElement.classList.add('off'); 
+    
+    alarmInterval = setInterval(() => {
+        countdownSeconds--;
+        updateCountdownTimer(countdownSeconds);
+
+        if (countdownSeconds <= 0) {
+            clearInterval(alarmInterval);
+            isCountingDown = false;
+            
+            // CẢNH BÁO/KẾT THÚC KÍCH HOẠT
+            const forgottenCount = parseInt(forgottenCountElement.innerText);
+            
+            if (forgottenCount > 0) {
+                // CẢNH BÁO: Phát hiện người trên xe
+                alarmStatusBadge.textContent = "CẢNH BÁO!";
+                alarmStatusBadge.className = "badge alert"; 
+                forgottenCountElement.classList.add('alert');
+                
+                // Cập nhật Trạng thái Hoạt Động (MỚI)
+                activityStatus.textContent = "CẢNH BÁO!";
+                activityStatus.className = "status-alert";
+                
+                showCustomAlert("CẢNH BÁO KHẨN CẤP", `Phát hiện ${forgottenCount} hành khách bị bỏ sót trên xe. Vui lòng kiểm tra ngay lập tức!`, true);
+                
+            } else {
+                // AN TOÀN: Không phát hiện người trên xe
+                alarmStatusBadge.textContent = "Hoàn tất";
+                alarmStatusBadge.className = "badge"; // Màu xanh
+                
+                // CẬP NHẬT: Tắt hiển thị bộ đếm ngược ghim
+                fixedCountdown.classList.remove('active');
+
+                // Cập nhật Trạng thái Hoạt Động (MỚI)
+                activityStatus.textContent = "An Toàn";
+                activityStatus.className = "status-checkin";
+                
+                showCustomAlert("KIỂM TRA HOÀN TẤT", "Đã xác nhận không còn hành khách nào trên xe. An toàn để tiếp tục.", false);
+            }
+            // Sau khi hoàn tất kiểm tra, cho phép checkin lại (nếu không có cảnh báo lỗi)
+            if (forgottenCount <= 0) {
+                checkinButton.disabled = false; 
+            }
+            // Nếu có lỗi, nút checkin sẽ được kích hoạt lại khi người dùng đóng modal (bằng cách gọi resetTimers trong alertCloseBtn handler)
+        }
+    }, 1000);
+}
+
+
+// Khởi tạo trạng thái ban đầu
+resetTimers();
+
+
+// --- Fetch Data Interval (Chính) - LOGIC CẬP NHẬT BIỂU ĐỒ VÀ KIỂM TRA SỚM ---
+setInterval(async () => {
+  try {
+    // Lấy dữ liệu thực tế từ MaixCam (endpoint /status)
+    const response = await fetch('/status');
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json(); // Dữ liệu được mong đợi: {get_on: number, get_off: number}
+    
+    // Cập nhật Get On/Off
+    document.getElementById("getOnCount").innerText = data.get_on;
+    document.getElementById("getOffCount").innerText = data.get_off;
+
+    const now = new Date();
+    const timeLabel = now.toLocaleTimeString();
+
+    // 1. Logic Biểu đồ Lên/Xuống Tức Thời (movementChart)
+    // Tính toán lượng thay đổi tức thời (flow rate)
+    const deltaOn = data.get_on - lastGetOn;
+    const deltaOff = data.get_off - lastGetOff;
+    
+    flowData.labels.push(timeLabel);
+    flowData.datasets[0].data.push(deltaOn);
+    flowData.datasets[1].data.push(deltaOff); 
+
+    if (flowData.labels.length > 20) {
+      flowData.labels.shift();
+      flowData.datasets[0].data.shift();
+      flowData.datasets[1].data.shift();
+    }
+    lastGetOn = data.get_on;
+    lastGetOff = data.get_off; 
+    movementChart.update();
+
+    // Cập nhật Peak Time
+    if (deltaOn > peakValue) {
+      peakValue = deltaOn;
+      peakTime = timeLabel;
+      document.getElementById("peakTime").innerText = peakTime;
+    }
+
+    // 2. Logic Biểu đồ So Sánh Tích Lũy (flowChart)
+    cumulativeData.labels.push(timeLabel);
+    cumulativeData.datasets[0].data.push(data.get_on); 
+    cumulativeData.datasets[1].data.push(data.get_off); 
+
+    if (cumulativeData.labels.length > 20) {
+      cumulativeData.labels.shift();
+      cumulativeData.datasets[0].data.shift();
+      cumulativeData.datasets[1].data.shift();
+    }
+    flowChart.update();
+
+    // People Present = in - out
+    const people = data.get_on - data.get_off;
+    const forgotten = people < 0 ? 0 : people; 
+    forgottenCountElement.innerText = forgotten;
+
+    // === LOGIC KIỂM TRA HOÀN TẤT SỚM (CHỈ KHI ĐANG ĐẾM NGƯỢC) ===
+    if (isCountingDown && forgotten <= 0) {
+        // Nếu số người về 0 trong quá trình đếm ngược, dừng và reset ngay
+        
+        // Tắt hiển thị bộ đếm ngược ghim
+        fixedCountdown.classList.remove('active');
+        
+        resetTimers(); 
+        checkinButton.disabled = false; 
+        activityStatus.textContent = "An Toàn"; // Cập nhật trạng thái
+        activityStatus.className = "status-checkin";
+        
+        // Thông báo an toàn ngay lập tức
+        showCustomAlert("KIỂM TRA THÀNH CÔNG", "Quá trình kiểm tra hành khách hoàn tất thành công. An toàn! (Số người: 0)", false);
+    }
+
+  } catch (e) {
+    // Thông báo lỗi nếu không kết nối được với MaixCam
+    console.error("Không thể kết nối hoặc fetch /status:", e);
+    // Có thể thêm logic hiển thị cảnh báo offline trên giao diện nếu cần
+  }
+}, 2000); // Cập nhật mỗi 2 giây
+// --- END LOGIC CHÍNH ---
+</script>
+
+<script>
+// --- Logic Stream Camera (Giữ nguyên) ---
+let streamActive = false;
+
+function startStream() {
+  const img = document.getElementById('streamImg');
+  const btn = document.getElementById('startStreamBtn');
+  
+  if (!streamActive) {
+    // Lấy stream từ endpoint /stream của MaixCam
+    img.src = '/stream';
+    img.style.display = 'block';
+    btn.textContent = 'Dừng Stream';
+    streamActive = true;
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    btn.textContent = 'Bắt Đầu Live Stream';
+    streamActive = false;
+  }
+}
+
+// Khi chuyển tab, tự động tắt stream
+document.querySelectorAll('nav a').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    
+    // Nếu rời khỏi tab Camera, tắt stream
+    if (a.dataset.target !== 'camera' && streamActive) {
+      const img = document.getElementById('streamImg');
+      const btn = document.getElementById('startStreamBtn');
+      img.src = '';
+      img.style.display = 'none';
+      btn.textContent = 'Bắt Đầu Live Stream';
+      streamActive = false;
+    }
+    
+    // Code cũ chuyển tab
+    document.querySelectorAll('nav a').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    document.querySelectorAll('.section').forEach(s => {
+      s.id === a.dataset.target
+        ? s.classList.add('active')
+        : s.classList.remove('active');
+    });
+  });
+});
+</script>
+
+</body>
+</html>
