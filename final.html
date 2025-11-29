@@ -972,6 +972,12 @@ main {
   src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao&libraries=places&callback=initMap">
 </script>
 <script>
+// --- QUAN TRỌNG: THÊM BIẾN API_BASE ĐỂ KẾT NỐI TỪ CLOUD ---
+// THAY ĐỔI IP/domain này thành IP public hoặc Dynamic DNS của bạn
+const API_BASE = "http://YOUR_PUBLIC_IP:8000"; 
+// Ví dụ: const API_BASE = "http://123.456.789.100:8000";
+// Hoặc: const API_BASE = "http://your-name.duckdns.org:8000";
+
 // --- Chart Setup (Giữ nguyên) ---
 
 // Biểu đồ 1: Lên/Xuống Tức Thời (Movement Flow)
@@ -1149,7 +1155,7 @@ function resetTimers() {
     // CẬP NHẬT: Cập nhật UI về trạng thái ban đầu
     checkinTimerDisplay.innerText = "00:00:00"; 
     
-    // CẬP NHẬT: Ẩn bộ đếm ghim
+    // CẬP NHẬT: Ẩn bộ đếm ngược ghim
     fixedCountdown.classList.remove('active');
     
     alarmStatusBadge.textContent = "Sẵn sàng";
@@ -1287,8 +1293,9 @@ resetTimers();
 // --- Fetch Data Interval (Chính) - LOGIC CẬP NHẬT BIỂU ĐỒ VÀ KIỂM TRA SỚM ---
 setInterval(async () => {
   try {
+    // QUAN TRỌNG: SỬA URL FETCH ĐỂ KẾT NỐI ĐẾN BACKEND
     // Lấy dữ liệu thực tế từ MaixCam (endpoint /status)
-    const response = await fetch('/status');
+    const response = await fetch(`${API_BASE}/status`); // THÊM API_BASE
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -1369,7 +1376,7 @@ setInterval(async () => {
 </script>
 
 <script>
-// --- Logic Stream Camera (Giữ nguyên) ---
+// --- Logic Stream Camera (SỬA URL STREAM) ---
 let streamActive = false;
 
 function startStream() {
@@ -1377,8 +1384,9 @@ function startStream() {
   const btn = document.getElementById('startStreamBtn');
   
   if (!streamActive) {
+    // QUAN TRỌNG: SỬA URL STREAM ĐỂ KẾT NỐI ĐẾN BACKEND
     // Lấy stream từ endpoint /stream của MaixCam
-    img.src = '/stream';
+    img.src = `${API_BASE}/stream`; // THÊM API_BASE
     img.style.display = 'block';
     btn.textContent = 'Dừng Stream';
     streamActive = true;
